@@ -33,14 +33,8 @@ else
   LOCAL_SRC_FILES += hardwarekeyboard.cpp
 endif
 
-LOCAL_SHARED_LIBRARIES += libminuitwrp libc libstdc++
+LOCAL_SHARED_LIBRARIES += libminuitwrp libc libstdc++ libminzip libaosprecovery
 LOCAL_MODULE := libguitwrp
-
-# Use this flag to create a build that simulates threaded actions like installing zips, backups, restores, and wipes for theme testing
-#TWRP_SIMULATE_ACTIONS := true
-ifeq ($(TWRP_SIMULATE_ACTIONS), true)
-LOCAL_CFLAGS += -D_SIMULATE_ACTIONS
-endif
 
 #TWRP_EVENT_LOGGING := true
 ifeq ($(TWRP_EVENT_LOGGING), true)
@@ -62,26 +56,33 @@ endif
 ifeq ($(TW_DISABLE_TTF), true)
     LOCAL_CFLAGS += -DTW_DISABLE_TTF
 endif
+ifneq ($(TW_X_OFFSET),)
+  LOCAL_CFLAGS += -DTW_X_OFFSET=$(TW_X_OFFSET)
+endif
+ifneq ($(TW_Y_OFFSET),)
+  LOCAL_CFLAGS += -DTW_Y_OFFSET=$(TW_Y_OFFSET)
+endif
 
 ifeq ($(DEVICE_RESOLUTION),)
-$(warning ********************************************************************************)
-$(warning * DEVICE_RESOLUTION is NOT SET in BoardConfig.mk )
-$(warning * Please see http://tinyw.in/nP7d for details    )
-$(warning ********************************************************************************)
-$(error stopping)
+  $(warning ********************************************************************************)
+  $(warning * DEVICE_RESOLUTION is NOT SET in BoardConfig.mk )
+  $(warning * Please see http://tinyw.in/50tg for details.   )
+  $(warning ********************************************************************************)
+  $(error stopping)
 endif
 
 ifeq ($(TW_CUSTOM_THEME),)
-	ifeq "$(wildcard $(commands_recovery_local_path)/gui/devices/$(DEVICE_RESOLUTION))" ""
-	$(warning ********************************************************************************)
-	$(warning * DEVICE_RESOLUTION ($(DEVICE_RESOLUTION)) does NOT EXIST in $(commands_recovery_local_path)/gui/devices )
-	$(warning * Please choose an existing theme or create a new one for your device )
-	$(warning ********************************************************************************)
-	$(error stopping)
-	endif
+  ifeq "$(wildcard $(commands_recovery_local_path)/gui/devices/$(DEVICE_RESOLUTION))" ""
+    $(warning ********************************************************************************)
+    $(warning * DEVICE_RESOLUTION ($(DEVICE_RESOLUTION)) does NOT EXIST in $(commands_recovery_local_path)/gui/devices )
+    $(warning * Please choose an existing theme or create a new one for your device. )
+    $(warning ********************************************************************************)
+    $(error stopping)
+  endif
 endif
 
 LOCAL_C_INCLUDES += bionic external/stlport/stlport $(commands_recovery_local_path)/gui/devices/$(DEVICE_RESOLUTION)
+LOCAL_CFLAGS += -DTWRES=\"$(TWRES_PATH)\"
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -90,7 +91,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := twrp
 LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/res
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
 TWRP_RES_LOC := $(commands_recovery_local_path)/gui/devices/common/res
 TWRP_COMMON_XML := $(hide) echo "No common TWRP XML resources"
 
@@ -100,20 +101,20 @@ ifeq ($(TW_CUSTOM_THEME),)
 	WATCH := 240x240 280x280 320x320
 	TWRP_THEME_LOC := $(commands_recovery_local_path)/gui/devices/$(DEVICE_RESOLUTION)/res
 	ifneq ($(filter $(DEVICE_RESOLUTION), $(PORTRAIT)),)
-		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/portrait/res/* $(TARGET_RECOVERY_ROOT_OUT)/res/
+		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/portrait/res/* $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
 	else ifneq ($(filter $(DEVICE_RESOLUTION), $(LANDSCAPE)),)
-		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/landscape/res/* $(TARGET_RECOVERY_ROOT_OUT)/res/
+		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/landscape/res/* $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
 	else ifneq ($(filter $(DEVICE_RESOLUTION), $(WATCH)),)
-		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/watch/res/* $(TARGET_RECOVERY_ROOT_OUT)/res/
+		TWRP_COMMON_XML := cp -fr $(commands_recovery_local_path)/gui/devices/watch/res/* $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
 	endif
 else
 	TWRP_THEME_LOC := $(TW_CUSTOM_THEME)
 endif
 
 ifeq ($(TW_DISABLE_TTF), true)
-	TWRP_REMOVE_FONT := rm -f $(TARGET_RECOVERY_ROOT_OUT)/res/fonts/*.ttf
+	TWRP_REMOVE_FONT := rm -f $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)fonts/*.ttf
 else
-	TWRP_REMOVE_FONT := rm -f $(TARGET_RECOVERY_ROOT_OUT)/res/fonts/*.dat
+	TWRP_REMOVE_FONT := rm -f $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)fonts/*.dat
 endif
 
 TWRP_RES_GEN := $(intermediates)/twrp
@@ -124,13 +125,15 @@ else
 endif
 
 $(TWRP_RES_GEN):
-	mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/res/
-	cp -fr $(TWRP_RES_LOC)/* $(TARGET_RECOVERY_ROOT_OUT)/res/
-	cp -fr $(TWRP_THEME_LOC)/* $(TARGET_RECOVERY_ROOT_OUT)/res/
+	mkdir -p $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
+	cp -fr $(TWRP_RES_LOC)/* $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
+	cp -fr $(TWRP_THEME_LOC)/* $(TARGET_RECOVERY_ROOT_OUT)$(TWRES_PATH)
 	$(TWRP_COMMON_XML)
 	$(TWRP_REMOVE_FONT)
 	mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/sbin/
+ifneq ($(TW_USE_TOOLBOX), true)
 	ln -sf $(TWRP_SH_TARGET) $(TARGET_RECOVERY_ROOT_OUT)/sbin/sh
+endif
 	ln -sf /sbin/pigz $(TARGET_RECOVERY_ROOT_OUT)/sbin/gzip
 	ln -sf /sbin/unpigz $(TARGET_RECOVERY_ROOT_OUT)/sbin/gunzip
 

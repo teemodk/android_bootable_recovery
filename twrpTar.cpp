@@ -21,6 +21,7 @@ extern "C" {
 	#include "libtar/libtar.h"
 	#include "twrpTar.h"
 	#include "tarWrite.h"
+	#include "set_metadata.h"
 }
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,6 +34,7 @@ extern "C" {
 #include <string>
 #include <sstream>
 #include <vector>
+#include <csignal>
 #include <dirent.h>
 #include <libgen.h>
 #include <sys/mman.h>
@@ -43,6 +45,9 @@ extern "C" {
 #ifndef BUILD_TWRPTAR_MAIN
 #include "data.hpp"
 #include "infomanager.hpp"
+extern "C" {
+	#include "set_metadata.h"
+}
 #endif //ndef BUILD_TWRPTAR_MAIN
 
 using namespace std;
@@ -79,9 +84,13 @@ void twrpTar::setpassword(string pass) {
 	password = pass;
 }
 
-int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigned long long *other_backups_size) {
+void twrpTar::Signal_Kill(int signum) {
+	_exit(255);
+}
+
+int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigned long long *other_backups_size, pid_t &fork_pid) {
 	int status = 0;
-	pid_t pid, rc_pid;
+	pid_t rc_pid, tar_fork_pid;
 	int progress_pipe[2], ret;
 
 	file_count = 0;
@@ -90,16 +99,17 @@ int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigne
 		LOGERR("Error creating progress tracking pipe\n");
 		return -1;
 	}
-	if ((pid = fork()) == -1) {
+	if ((tar_fork_pid = fork()) == -1) {
 		LOGINFO("create tar failed to fork.\n");
 		close(progress_pipe[0]);
 		close(progress_pipe[1]);
 		return -1;
 	}
-	if (pid == 0) {
-		// Child process
 
+	if (tar_fork_pid == 0) {
+		// Child process
 		// Child closes input side of progress pipe
+		signal(SIGUSR2, twrpTar::Signal_Kill);
 		close(progress_pipe[0]);
 		progress_pipe_fd = progress_pipe[1];
 
@@ -300,7 +310,7 @@ int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigne
 						_exit(-1);
 					} else {
 						LOGINFO("Joined thread %i.\n", i);
-						ret = (int)thread_return;
+						ret = *((int *)thread_return);
 						if (ret != 0) {
 							thread_error = 1;
 							LOGERR("Thread %i returned an error %i.\n", i, ret);
@@ -371,6 +381,8 @@ int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigne
 		files_backup = 0;
 		size_backup = 0;
 
+		fork_pid = tar_fork_pid;
+
 		// Parent closes output side
 		close(progress_pipe[1]);
 
@@ -418,7 +430,7 @@ int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigne
 		backup_info.SetValue("file_count", files_backup);
 		backup_info.SaveValues();
 #endif //ndef BUILD_TWRPTAR_MAIN
-		if (TWFunc::Wait_For_Child(pid, &status, "createTarFork()") != 0)
+		if (TWFunc::Wait_For_Child(tar_fork_pid, &status, "createTarFork()") != 0)
 			return -1;
 	}
 	return 0;
@@ -426,7 +438,7 @@ int twrpTar::createTarFork(const unsigned long long *overall_size, const unsigne
 
 int twrpTar::extractTarFork(const unsigned long long *overall_size, unsigned long long *other_backups_size) {
 	int status = 0;
-	pid_t pid, rc_pid;
+	pid_t rc_pid, tar_fork_pid;
 	int progress_pipe[2], ret;
 
 	if (pipe(progress_pipe) < 0) {
@@ -434,10 +446,10 @@ int twrpTar::extractTarFork(const unsigned long long *overall_size, unsigned lon
 		return -1;
 	}
 
-	pid = fork();
-	if (pid >= 0) // fork was successful
+	tar_fork_pid = fork();
+	if (tar_fork_pid >= 0) // fork was successful
 	{
-		if (pid == 0) // child process
+		if (tar_fork_pid == 0) // child process
 		{
 			close(progress_pipe[0]);
 			progress_pipe_fd = progress_pipe[1];
@@ -532,7 +544,7 @@ int twrpTar::extractTarFork(const unsigned long long *overall_size, unsigned lon
 							_exit(-1);
 						} else {
 							LOGINFO("Joined thread %i.\n", i);
-							ret = (int)thread_return;
+							ret = *((int *)thread_return);
 							if (ret != 0) {
 								thread_error = 1;
 								LOGERR("Thread %i returned an error %i.\n", i, ret);
@@ -581,7 +593,7 @@ int twrpTar::extractTarFork(const unsigned long long *overall_size, unsigned lon
 #endif //ndef BUILD_TWRPTAR_MAIN
 			*other_backups_size += size_backup;
 
-			if (TWFunc::Wait_For_Child(pid, &status, "extractTarFork()") != 0)
+			if (TWFunc::Wait_For_Child(tar_fork_pid, &status, "extractTarFork()") != 0)
 				return -1;
 		}
 	}
@@ -751,7 +763,7 @@ int twrpTar::tarList(std::vector<TarListStruct> *TarList, unsigned thread_id) {
 		LOGERR("Error closing '%s' on thread %i\n", tarfn.c_str(), thread_id);
 		return -3;
 	}
-	LOGINFO("Thread id %i tarList done, %i archives.\n", thread_id, archive_count, i, list_size);
+	LOGINFO("Thread id %i tarList done, %i archives.\n", thread_id, archive_count);
 	return 0;
 }
 
@@ -1242,6 +1254,9 @@ int twrpTar::closeTar() {
 		LOGERR("Backup file size for '%s' is 0 bytes.\n", tarfn.c_str());
 		return -1;
 	}
+#ifndef BUILD_TWRPTAR_MAIN
+	tw_set_default_metadata(tarfn.c_str());
+#endif
 	return 0;
 }
 

@@ -300,10 +300,10 @@ static int get_framebuffer(GGLSurface *fb)
     fb->height = vi.yres;
 #ifdef BOARD_HAS_JANKY_BACKBUFFER
     fb->stride = fi.line_length/2;
-    fb->data = (void*) (((unsigned) bits) + vi.yres * fi.line_length);
+    fb->data = (GGLubyte*) (((unsigned long) bits) + vi.yres * fi.line_length);
 #else
     fb->stride = vi.xres_virtual;
-    fb->data = (void*) (((unsigned) bits) + vi.yres * fb->stride * PIXEL_SIZE);
+    fb->data = (GGLubyte*) (((unsigned long) bits) + vi.yres * fb->stride * PIXEL_SIZE);
 #endif
     fb->format = PIXEL_FORMAT;
     if (!has_overlay) {
@@ -626,7 +626,7 @@ void* gr_loadFont(const char* fontName)
     {
         char tmp[128];
 
-        sprintf(tmp, "/res/fonts/%s.dat", fontName);
+        sprintf(tmp, TWRES "fonts/%s.dat", fontName);
         fd = open(tmp, O_RDONLY);
         if (fd == -1)
             return NULL;

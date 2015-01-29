@@ -50,9 +50,11 @@
 #ifndef TW_EXCLUDE_ENCRYPTED_BACKUPS
 	#include "openaes/inc/oaes_lib.h"
 #endif
+#include "cutils/android_reboot.h"
 
 extern "C" {
 	#include "libcrecovery/common.h"
+	#include "set_metadata.h"
 }
 
 /* Execute a command */
@@ -352,30 +354,30 @@ void TWFunc::install_htc_dumlock(void) {
 		return;
 
 	gui_print("Installing HTC Dumlock to system...\n");
-	copy_file("/res/htcd/htcdumlocksys", "/system/bin/htcdumlock", 0755);
+	copy_file(TWHTCD_PATH "htcdumlocksys", "/system/bin/htcdumlock", 0755);
 	if (!Path_Exists("/system/bin/flash_image")) {
 		gui_print("Installing flash_image...\n");
-		copy_file("/res/htcd/flash_imagesys", "/system/bin/flash_image", 0755);
+		copy_file(TWHTCD_PATH "flash_imagesys", "/system/bin/flash_image", 0755);
 		need_libs = 1;
 	} else
 		gui_print("flash_image is already installed, skipping...\n");
 	if (!Path_Exists("/system/bin/dump_image")) {
 		gui_print("Installing dump_image...\n");
-		copy_file("/res/htcd/dump_imagesys", "/system/bin/dump_image", 0755);
+		copy_file(TWHTCD_PATH "dump_imagesys", "/system/bin/dump_image", 0755);
 		need_libs = 1;
 	} else
 		gui_print("dump_image is already installed, skipping...\n");
 	if (need_libs) {
 		gui_print("Installing libs needed for flash_image and dump_image...\n");
-		copy_file("/res/htcd/libbmlutils.so", "/system/lib/libbmlutils.so", 0755);
-		copy_file("/res/htcd/libflashutils.so", "/system/lib/libflashutils.so", 0755);
-		copy_file("/res/htcd/libmmcutils.so", "/system/lib/libmmcutils.so", 0755);
-		copy_file("/res/htcd/libmtdutils.so", "/system/lib/libmtdutils.so", 0755);
+		copy_file(TWHTCD_PATH "libbmlutils.so", "/system/lib/libbmlutils.so", 0644);
+		copy_file(TWHTCD_PATH "libflashutils.so", "/system/lib/libflashutils.so", 0644);
+		copy_file(TWHTCD_PATH "libmmcutils.so", "/system/lib/libmmcutils.so", 0644);
+		copy_file(TWHTCD_PATH "libmtdutils.so", "/system/lib/libmtdutils.so", 0644);
 	}
 	gui_print("Installing HTC Dumlock app...\n");
 	mkdir("/data/app", 0777);
 	unlink("/data/app/com.teamwin.htcdumlock*");
-	copy_file("/res/htcd/HTCDumlock.apk", "/data/app/com.teamwin.htcdumlock.apk", 0777);
+	copy_file(TWHTCD_PATH "HTCDumlock.apk", "/data/app/com.teamwin.htcdumlock.apk", 0777);
 	sync();
 	gui_print("HTC Dumlock is installed.\n");
 }
@@ -405,9 +407,13 @@ int TWFunc::Recursive_Mkdir(string Path) {
 	while (pos != string::npos)
 	{
 		wholePath = pathCpy.substr(0, pos);
-		if (mkdir(wholePath.c_str(), 0777) && errno != EEXIST) {
-			LOGERR("Unable to create folder: %s  (errno=%d)\n", wholePath.c_str(), errno);
-			return false;
+		if (!TWFunc::Path_Exists(wholePath)) {
+			if (mkdir(wholePath.c_str(), 0777)) {
+				LOGERR("Unable to create folder: %s  (errno=%d)\n", wholePath.c_str(), errno);
+				return false;
+			} else {
+				tw_set_default_metadata(wholePath.c_str());
+			}
 		}
 
 		pos = pathCpy.find("/", pos + 1);
@@ -524,10 +530,22 @@ int TWFunc::tw_reboot(RebootCommand command)
 			return reboot(RB_AUTOBOOT);
 		case rb_recovery:
 			check_and_run_script("/sbin/rebootrecovery.sh", "reboot recovery");
+#ifdef ANDROID_RB_PROPERTY
+			property_set(ANDROID_RB_PROPERTY, "reboot,recovery");
+#else
 			return __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, (void*) "recovery");
+#endif
+			sleep(5);
+			return 0;
 		case rb_bootloader:
 			check_and_run_script("/sbin/rebootbootloader.sh", "reboot bootloader");
+#ifdef ANDROID_RB_PROPERTY
+			property_set(ANDROID_RB_PROPERTY, "reboot,bootloader");
+#else
 			return __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, (void*) "bootloader");
+#endif
+			sleep(5);
+			return 0;
 		case rb_poweroff:
 			check_and_run_script("/sbin/poweroff.sh", "power off");
 #ifdef ANDROID_RB_POWEROFF
@@ -536,7 +554,13 @@ int TWFunc::tw_reboot(RebootCommand command)
 			return reboot(RB_POWER_OFF);
 		case rb_download:
 			check_and_run_script("/sbin/rebootdownload.sh", "reboot download");
+#ifdef ANDROID_RB_PROPERTY
+			property_set(ANDROID_RB_PROPERTY, "reboot,download");
+#else
 			return __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, (void*) "download");
+#endif
+			sleep(5);
+			return 0;
 		default:
 			return -1;
 	}
@@ -561,7 +585,7 @@ int TWFunc::removeDir(const string path, bool skipParent) {
 	string new_path;
 
 	if (d == NULL) {
-		LOGERR("Error opening '%s'\n", path.c_str());
+		LOGERR("Error opening dir: '%s'\n", path.c_str());
 		return -1;
 	}
 
@@ -705,292 +729,11 @@ int32_t TWFunc::timespec_diff_ms(timespec& start, timespec& end)
 			((start.tv_sec * 1000) + start.tv_nsec/1000000);
 }
 
-int TWFunc::drop_caches(void) {
-	string file = "/proc/sys/vm/drop_caches";
-	string value = "3";
-	if (write_file(file, value) != 0)
-		return -1;
-	return 0;
-}
-
-int TWFunc::Check_su_Perms(void) {
-	struct stat st;
-	int ret = 0;
-
-	if (!PartitionManager.Mount_By_Path("/system", false))
-		return 0;
-
-	// Check to ensure that perms are 6755 for all 3 file locations
-	if (stat("/system/bin/su", &st) == 0) {
-		if ((st.st_mode & (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) != (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) || st.st_uid != 0 || st.st_gid != 0) {
-			ret = 1;
-		}
-	}
-	if (stat("/system/xbin/su", &st) == 0) {
-		if ((st.st_mode & (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) != (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) || st.st_uid != 0 || st.st_gid != 0) {
-			ret += 2;
-		}
-	}
-	if (stat("/system/bin/.ext/.su", &st) == 0) {
-		if ((st.st_mode & (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) != (S_ISUID | S_ISGID | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) || st.st_uid != 0 || st.st_gid != 0) {
-			ret += 4;
-		}
-	}
-	return ret;
-}
-
-bool TWFunc::Fix_su_Perms(void) {
-	if (!PartitionManager.Mount_By_Path("/system", true))
-		return false;
-
-	string propvalue = System_Property_Get("ro.build.version.sdk");
-	string su_perms = "6755";
-	if (!propvalue.empty()) {
-		int sdk_version = atoi(propvalue.c_str());
-		if (sdk_version >= 18)
-			su_perms = "0755";
-	}
-
-	string file = "/system/bin/su";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, su_perms) != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/xbin/su";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, su_perms) != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/xbin/daemonsu";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, "0755") != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/bin/.ext/.su";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, su_perms) != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/etc/install-recovery.sh";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, "0755") != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/etc/init.d/99SuperSUDaemon";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, "0755") != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	file = "/system/app/Superuser.apk";
-	if (TWFunc::Path_Exists(file)) {
-		if (chown(file.c_str(), 0, 0) != 0) {
-			LOGERR("Failed to chown '%s'\n", file.c_str());
-			return false;
-		}
-		if (tw_chmod(file, "0644") != 0) {
-			LOGERR("Failed to chmod '%s'\n", file.c_str());
-			return false;
-		}
-	}
-	sync();
-	if (!PartitionManager.UnMount_By_Path("/system", true))
-		return false;
-	return true;
-}
-
-int TWFunc::tw_chmod(const string& fn, const string& mode) {
-	long mask = 0;
-	std::string::size_type n = mode.length();
-	int cls = 0;
-
-	if(n == 3)
-		++cls;
-	else if(n != 4)
-	{
-		LOGERR("TWFunc::tw_chmod used with %u long mode string (should be 3 or 4)!\n", mode.length());
-		return -1;
-	}
-
-	for (n = 0; n < mode.length(); ++n, ++cls) {
-		if (cls == 0) {
-			if (mode[n] == '0')
-				continue;
-			else if (mode[n] == '1')
-				mask |= S_ISVTX;
-			else if (mode[n] == '2')
-				mask |= S_ISGID;
-			else if (mode[n] == '4')
-				mask |= S_ISUID;
-			else if (mode[n] == '5') {
-				mask |= S_ISVTX;
-				mask |= S_ISUID;
-			}
-			else if (mode[n] == '6') {
-				mask |= S_ISGID;
-				mask |= S_ISUID;
-			}
-			else if (mode[n] == '7') {
-				mask |= S_ISVTX;
-				mask |= S_ISGID;
-				mask |= S_ISUID;
-			}
-		}
-		else if (cls == 1) {
-			if (mode[n] == '7') {
-				mask |= S_IRWXU;
-			}
-			else if (mode[n] == '6') {
-				mask |= S_IRUSR;
-				mask |= S_IWUSR;
-			}
-			else if (mode[n] == '5') {
-				mask |= S_IRUSR;
-				mask |= S_IXUSR;
-			}
-			else if (mode[n] == '4')
-				mask |= S_IRUSR;
-			else if (mode[n] == '3') {
-				mask |= S_IWUSR;
-				mask |= S_IRUSR;
-			}
-			else if (mode[n] == '2')
-				mask |= S_IWUSR;
-			else if (mode[n] == '1')
-				mask |= S_IXUSR;
-		}
-		else if (cls == 2) {
-			if (mode[n] == '7') {
-				mask |= S_IRWXG;
-			}
-			else if (mode[n] == '6') {
-				mask |= S_IRGRP;
-				mask |= S_IWGRP;
-			}
-			else if (mode[n] == '5') {
-				mask |= S_IRGRP;
-				mask |= S_IXGRP;
-			}
-			else if (mode[n] == '4')
-				mask |= S_IRGRP;
-			else if (mode[n] == '3') {
-				mask |= S_IWGRP;
-				mask |= S_IXGRP;
-			}
-			else if (mode[n] == '2')
-				mask |= S_IWGRP;
-			else if (mode[n] == '1')
-				mask |= S_IXGRP;
-		}
-		else if (cls == 3) {
-			if (mode[n] == '7') {
-				mask |= S_IRWXO;
-			}
-			else if (mode[n] == '6') {
-				mask |= S_IROTH;
-				mask |= S_IWOTH;
-			}
-			else if (mode[n] == '5') {
-				mask |= S_IROTH;
-				mask |= S_IXOTH;
-			}
-			else if (mode[n] == '4')
-				mask |= S_IROTH;
-			else if (mode[n] == '3') {
-				mask |= S_IWOTH;
-				mask |= S_IXOTH;
-			}
-			else if (mode[n] == '2')
-				mask |= S_IWOTH;
-			else if (mode[n] == '1')
-				mask |= S_IXOTH;
-		}
-	}
-
-	if (chmod(fn.c_str(), mask) != 0) {
-		LOGERR("Unable to chmod '%s' %l\n", fn.c_str(), mask);
-		return -1;
-	}
-
-	return 0;
-}
-
 bool TWFunc::Install_SuperSU(void) {
 	if (!PartitionManager.Mount_By_Path("/system", true))
 		return false;
 
-	TWFunc::Exec_Cmd("/sbin/chattr -i /system/xbin/su");
-	if (copy_file("/supersu/su", "/system/xbin/su", 0755) != 0) {
-		LOGERR("Failed to copy su binary to /system/bin\n");
-		return false;
-	}
-	if (!Path_Exists("/system/bin/.ext")) {
-		mkdir("/system/bin/.ext", 0777);
-	}
-	TWFunc::Exec_Cmd("/sbin/chattr -i /system/bin/.ext/su");
-	if (copy_file("/supersu/su", "/system/bin/.ext/su", 0755) != 0) {
-		LOGERR("Failed to copy su binary to /system/bin/.ext/su\n");
-		return false;
-	}
-	TWFunc::Exec_Cmd("/sbin/chattr -i /system/xbin/daemonsu");
-	if (copy_file("/supersu/su", "/system/xbin/daemonsu", 0755) != 0) {
-		LOGERR("Failed to copy su binary to /system/xbin/daemonsu\n");
-		return false;
-	}
-	if (Path_Exists("/system/etc/init.d")) {
-		TWFunc::Exec_Cmd("/sbin/chattr -i /system/etc/init.d/99SuperSUDaemon");
-		if (copy_file("/supersu/99SuperSUDaemon", "/system/etc/init.d/99SuperSUDaemon", 0755) != 0) {
-			LOGERR("Failed to copy 99SuperSUDaemon to /system/etc/init.d/99SuperSUDaemon\n");
-			return false;
-		}
-	} else {
-		TWFunc::Exec_Cmd("/sbin/chattr -i /system/etc/install-recovery.sh");
-		if (copy_file("/supersu/install-recovery.sh", "/system/etc/install-recovery.sh", 0755) != 0) {
-			LOGERR("Failed to copy install-recovery.sh to /system/etc/install-recovery.sh\n");
-			return false;
-		}
-	}
-	if (copy_file("/supersu/Superuser.apk", "/system/app/Superuser.apk", 0644) != 0) {
-		LOGERR("Failed to copy Superuser app to /system/app\n");
-		return false;
-	}
-	if (!Fix_su_Perms())
-		return false;
+	check_and_run_script("/supersu/install-supersu.sh", "SuperSU");
 	return true;
 }
 
