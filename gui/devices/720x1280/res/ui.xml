@@ -102,7 +102,7 @@
 		<variable name="slider_y" value="1050" />
 		<variable name="slider_text_y" value="1117" />
 		<variable name="button_text_color" value="#AAAAAA" />
-		<variable name="text_color" value="#FFFFFF" />
+		<variable name="text_color" value="#EEEE00" />
 		<variable name="text_success_color" value="#33B5E5" />
 		<variable name="text_fail_color" value="#FF0101" />
 		<variable name="highlight_color" value="#90909080" />
@@ -121,35 +121,35 @@
 		<variable name="sort_col3_button_x" value="460" />
 		<variable name="input_width" value="700" />
 		<variable name="input_height" value="50" />
-		<variable name="input_background_color" value="#303030" />
-		<variable name="input_cursor_color" value="#33B5E5" />
+		<variable name="input_background_color" value="#323200" />
+		<variable name="input_cursor_color" value="#DDDD00" />
 		<variable name="input_cursor_width" value="3" />
 		<variable name="console_x" value="0" />
 		<variable name="console_width" value="720" />
-		<variable name="console_foreground" value="#A0A0A0" />
+		<variable name="console_foreground" value="#DDDD00" />
 		<variable name="warning" value="#F8F8A0" />
 		<variable name="error" value="#FF4040" />
 		<variable name="highlight" value="#33B5E5" />
-		<variable name="console_background" value="#303030" />
-		<variable name="console_scroll" value="#303030" />
+		<variable name="console_background" value="#323200" />
+		<variable name="console_scroll" value="#323200" />
 		<variable name="console_action_height" value="470" />
 		<variable name="console_install_height" value="600" />
 		<variable name="console_installdone_height" value="440" />
 		<variable name="fileselector_x" value="5" />
 		<variable name="fileselector_width" value="710" />
 		<variable name="fileselector_install_height" value="780" />
-		<variable name="fileselector_header_background" value="#202020" />
-		<variable name="fileselector_header_textcolor" value="#AAAAAA" />
-		<variable name="fileselector_header_separatorcolor" value="#33B5E5" />
+		<variable name="fileselector_header_background" value="#505000" />
+		<variable name="fileselector_header_textcolor" value="#DDDD00" />
+		<variable name="fileselector_header_separatorcolor" value="#00BB00" />
 		<variable name="fileselector_header_separatorheight" value="3" />
-		<variable name="fileselector_separatorcolor" value="#505050" />
+		<variable name="fileselector_separatorcolor" value="#999900" />
 		<variable name="fileselector_separatorheight" value="2" />
-		<variable name="fileselector_background" value="#303030" />
-		<variable name="fileselector_highlight_color" value="#505050" />
-		<variable name="fileselector_highlight_font_color" value="#33B5E5" />
+		<variable name="fileselector_background" value="#323200" />
+		<variable name="fileselector_highlight_color" value="#999900" />
+		<variable name="fileselector_highlight_font_color" value="#00EE00" />
 		<variable name="fileselector_spacing" value="36" />
-		<variable name="fastscroll_linecolor" value="#808080" />
-		<variable name="fastscroll_rectcolor" value="#808080" />
+		<variable name="fastscroll_linecolor" value="#999900" />
+		<variable name="fastscroll_rectcolor" value="#999900" />
 		<variable name="fastscroll_w" value="60" />
 		<variable name="fastscroll_linew" value="2" />
 		<variable name="fastscroll_rectw" value="40" />
@@ -157,7 +157,7 @@
 		<variable name="listbox_x" value="5" />
 		<variable name="listbox_width" value="710" />
 		<variable name="listbox_tz_height" value="590" />
-		<variable name="listbox_background" value="#303030" />
+		<variable name="listbox_background" value="#323200" />
 		<variable name="listbox_spacing" value="16" />
 		<variable name="sd_plus_x" value="350" />
 		<variable name="sdext_text_x" value="110" />
@@ -178,7 +178,7 @@
 		<variable name="row_dst_text_y" value="720" />
 		<variable name="row_offset_text_y" value="770" />
 		<variable name="row_offset_medium_y" value="840" />
-		<variable name="button_fill_color" value="#303030" />
+		<variable name="button_fill_color" value="#323200" />
 		<variable name="button_fill_full_width" value="700" />
 		<variable name="button_fill_main_width" value="337" />
 		<variable name="button_fill_main_height" value="216" />
@@ -219,7 +219,7 @@
 
 			<object type="text" color="%text_color%">
 				<font resource="font" />
-				<placement x="120" y="10" />
+				<placement x="117" y="1" />
 				<text>Team Win Recovery Project  v%tw_version%</text>
 			</object>
 
@@ -232,13 +232,13 @@
 
 			<object type="text" color="%text_color%">
 				<font resource="font" />
-				<placement x="120" y="76" />
+				<placement x="320" y="75" />
 				<text>%tw_time%</text>
 			</object>
 
 			<object type="text" color="%text_color%">
 				<font resource="font" />
-				<placement x="270" y="76" />
+				<placement x="117" y="75" />
 				<conditions>
 					<condition var1="tw_no_battery_percent" var2="0" />
 					<condition var1="tw_battery" op=">" var2="0" />
@@ -249,7 +249,7 @@
 
 			<object type="text" color="%text_color%">
 				<font resource="font" />
-				<placement x="500" y="76" />
+				<placement x="484" y="75" />
 				<conditions>
 					<condition var1="tw_no_cpu_temp" var2="0" />
 				</conditions>
