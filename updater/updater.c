@@ -33,7 +33,7 @@
 
 // Where in the package we expect to find the edify script to execute.
 // (Note it's "updateR-script", not the older "update-script".)
-#define SCRIPT_NAME "META-INF/com/google/android/updater-script-newlayout"
+#define SCRIPT_NAME "META-INF/com/google/android/updater-script"
 #define SELINUX_CONTEXTS_ZIP "file_contexts"
 #define SELINUX_CONTEXTS_TMP "/tmp/file_contexts"
 
