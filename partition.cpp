@@ -478,6 +478,7 @@ bool TWPartition::Process_Flags(string Flags, bool Display_Error) {
 			}
 		} else if (strcmp(ptr, "settingsstorage") == 0) {
 			Is_Storage = true;
+			Is_Settings_Storage = true;
 		} else if (strcmp(ptr, "andsec") == 0) {
 			Has_Android_Secure = true;
 		} else if (strcmp(ptr, "canbewiped") == 0) {
@@ -973,6 +974,20 @@ bool TWPartition::Mount(bool Display_Error) {
 		}
 	}
 
+	if (Current_File_System == "ntfs" && TWFunc::Path_Exists("/sbin/ntfs-3g")) {
+		string cmd;
+		if (Mount_Read_Only)
+			cmd = "/sbin/ntfs-3g -o ro " + Actual_Block_Device + " " + Mount_Point;
+		else
+			cmd = "/sbin/ntfs-3g " + Actual_Block_Device + " " + Mount_Point;
+		LOGINFO("cmd: '%s'\n", cmd.c_str());
+		if (TWFunc::Exec_Cmd(cmd) == 0) {
+			return true;
+		} else {
+			LOGINFO("ntfs-3g failed to mount, trying regular mount method.\n");
+		}
+	}
+
 	if (Mount_Read_Only)
 		flags |= MS_RDONLY;
 
@@ -1051,7 +1066,7 @@ bool TWPartition::Mount(bool Display_Error) {
 	if (Removable)
 		Update_Size(Display_Error);
 
-	if (!Symlink_Mount_Point.empty()) {
+	if (!Symlink_Mount_Point.empty() && TWFunc::Path_Exists(Symlink_Path)) {
 		string Command = "mount -o bind '" + Symlink_Path + "' '" + Symlink_Mount_Point + "'";
 		TWFunc::Exec_Cmd(Command);
 	}
@@ -1125,6 +1140,8 @@ bool TWPartition::Wipe(string New_File_System) {
 			wiped = Wipe_MTD();
 		else if (New_File_System == "f2fs")
 			wiped = Wipe_F2FS();
+		else if (New_File_System == "ntfs")
+			wiped = Wipe_NTFS();
 		else {
 			LOGERR("Unable to wipe '%s' -- unknown file system '%s'\n", Mount_Point.c_str(), New_File_System.c_str());
 			unlink("/.layout_version");
@@ -1193,6 +1210,8 @@ bool TWPartition::Can_Repair() {
 	else if (Current_File_System == "exfat" && TWFunc::Path_Exists("/sbin/fsck.exfat"))
 		return true;
 	else if (Current_File_System == "f2fs" && TWFunc::Path_Exists("/sbin/fsck.f2fs"))
+		return true;
+	else if (Current_File_System == "ntfs" && TWFunc::Path_Exists("/sbin/ntfsfix"))
 		return true;
 	return false;
 }
@@ -1267,6 +1286,25 @@ bool TWPartition::Repair() {
 		gui_print("Repairing %s using fsck.f2fs...\n", Display_Name.c_str());
 		Find_Actual_Block_Device();
 		command = "/sbin/fsck.f2fs " + Actual_Block_Device;
+		LOGINFO("Repair command: %s\n", command.c_str());
+		if (TWFunc::Exec_Cmd(command) == 0) {
+			gui_print("Done.\n");
+			return true;
+		} else {
+			LOGERR("Unable to repair '%s'.\n", Mount_Point.c_str());
+			return false;
+		}
+	}
+	if (Current_File_System == "ntfs") {
+		if (!TWFunc::Path_Exists("/sbin/ntfsfix")) {
+			gui_print("ntfsfix does not exist! Cannot repair!\n");
+			return false;
+		}
+		if (!UnMount(true))
+			return false;
+		gui_print("Repairing %s using ntfsfix...\n", Display_Name.c_str());
+		Find_Actual_Block_Device();
+		command = "/sbin/ntfsfix " + Actual_Block_Device;
 		LOGINFO("Repair command: %s\n", command.c_str());
 		if (TWFunc::Exec_Cmd(command) == 0) {
 			gui_print("Done.\n");
@@ -1767,6 +1805,29 @@ bool TWPartition::Wipe_F2FS() {
 	return false;
 }
 
+bool TWPartition::Wipe_NTFS() {
+	string command;
+
+	if (TWFunc::Path_Exists("/sbin/mkntfs")) {
+		if (!UnMount(true))
+			return false;
+
+		gui_print("Formatting %s using mkntfs...\n", Display_Name.c_str());
+		Find_Actual_Block_Device();
+		command = "mkntfs " + Actual_Block_Device;
+		if (TWFunc::Exec_Cmd(command) == 0) {
+			Recreate_AndSec_Folder();
+			gui_print("Done.\n");
+			return true;
+		} else {
+			LOGERR("Unable to wipe '%s'.\n", Mount_Point.c_str());
+			return false;
+		}
+		return true;
+	}
+	return false;
+}
+
 bool TWPartition::Wipe_Data_Without_Wiping_Media() {
 #ifdef TW_OEM_BUILD
 	// In an OEM Build we want to do a full format
@@ -2116,15 +2177,22 @@ void TWPartition::Recreate_Media_Folder(void) {
 	} else if (!TWFunc::Path_Exists("/data/media")) {
 		PartitionManager.Mount_By_Path(Symlink_Mount_Point, true);
 		LOGINFO("Recreating /data/media folder.\n");
-		mkdir("/data/media", S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+		mkdir("/data/media", 0770);
+		string Internal_path = DataManager::GetStrValue("tw_internal_path");
+		if (!Internal_path.empty()) {
+			LOGINFO("Recreating %s folder.\n", Internal_path.c_str());
+			mkdir(Internal_path.c_str(), 0770);
+		}
+#ifdef TW_INTERNAL_STORAGE_PATH
+		mkdir(EXPAND(TW_INTERNAL_STORAGE_PATH), 0770);
+#endif
 #ifdef HAVE_SELINUX
-		// Attempt to set the correct SELinux contexts on the folder
-		fixPermissions perms;
-		perms.fixDataInternalContexts();
 		// Afterwards, we will try to set the
 		// default metadata that we were hopefully able to get during
 		// early boot.
 		tw_set_default_metadata("/data/media");
+		if (!Internal_path.empty())
+			tw_set_default_metadata(Internal_path.c_str());
 #endif
 		// Toggle mount to ensure that "internal sdcard" gets mounted
 		PartitionManager.UnMount_By_Path(Symlink_Mount_Point, true);
