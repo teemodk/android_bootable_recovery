@@ -85,7 +85,7 @@ on late-init
     # Load properties from /system/ + /factory after fs mount. Place
     # this in another action so that the load will be scheduled after the prior
     # issued fs triggers have completed.
-    trigger load_system_props_action
+#    trigger load_system_props_action
 
     # Load properties, Android 6.0+
     trigger load_system_props_action
